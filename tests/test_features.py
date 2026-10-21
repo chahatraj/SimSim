@@ -4,15 +4,13 @@ import pytest
 
 from simsim import (
     END,
+    LLM,
     Agent,
     Conversation,
     FullHistory,
     HumanAgent,
     Judge,
-    LLM,
     LLMResponse,
-    NoMemory,
-    Persona,
     ScoredMemory,
     ScriptedAgent,
     ScriptedLLM,
@@ -36,7 +34,6 @@ from simsim import (
     whisper,
 )
 from simsim.structured import StructuredOutputError, parse
-
 
 # ---- llm ---------------------------------------------------------------------
 
@@ -202,7 +199,6 @@ def test_user_simulator_with_tools_and_enders():
         """Refund an order."""
         return "refunded"
 
-    world_log = []
     user = user_simulator("user", ScriptedLLM(["I want a refund for order 7.", "Thanks ###STOP###"]), goal="refund order 7")
     assistant = Agent("assistant", ScriptedLLM([
         LLMResponse(tool_calls=[ToolCall("1", "refund", {"order_id": "7"})]), "Done, refunded. ###STOP###",

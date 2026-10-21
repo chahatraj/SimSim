@@ -1,3 +1,4 @@
+import json
 import math
 
 import pytest
@@ -5,11 +6,30 @@ import pytest
 pd = pytest.importorskip("pandas")
 
 from simsim import (  # noqa: E402
-    END, Agent, Conversation, Experiment, FullHistory, InnerState, Judge, ScriptedAgent, ScriptedLLM, Simulation,
-    at, grid, probe, survey,
+    END,
+    Agent,
+    Conversation,
+    Experiment,
+    FullHistory,
+    InnerState,
+    Judge,
+    ScriptedAgent,
+    ScriptedLLM,
+    Simulation,
+    at,
+    grid,
+    probe,
+    survey,
 )
 from simsim.analysis import (  # noqa: E402
-    cost_report, expected_value, load_probes, load_runs, load_turns, parse_condition, pass_hat_k, summarize,
+    cost_report,
+    expected_value,
+    load_probes,
+    load_runs,
+    load_turns,
+    parse_condition,
+    pass_hat_k,
+    summarize,
     transcript,
 )
 from simsim.viewer import write_viewer  # noqa: E402
@@ -23,10 +43,10 @@ def build(cond, seed):
         if "label only" in content:
             return "4" if cond["style"] == "warm" else "2"
         if "Update your state" in content:
-            return '{"trust": %d}' % (5 if cond["style"] == "warm" else 2)
+            return json.dumps({"trust": 5 if cond["style"] == "warm" else 2})
         if "Rate the" in content:
-            return '{"score": %d}' % (8 if cond["style"] == "warm" else 3)
-        return '{"thoughts": "hmm", "reply": "Hello from %s"}' % cond["style"]
+            return json.dumps({"score": 8 if cond["style"] == "warm" else 3})
+        return json.dumps({"thoughts": "hmm", "reply": f"Hello from {cond['style']}"})
 
     llm = ScriptedLLM(script, price=(1.0, 2.0))
     a = Agent("A", llm, memory=FullHistory(), output_schema={"thoughts": str, "reply": str},

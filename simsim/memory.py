@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .embed import Embedder
 from .llm import LLM
@@ -283,7 +284,7 @@ class ScoredMemory(Memory):
         ]
         if self.normalize:
             parts = [_minmax(p) for p in parts]
-        scores = [sum(w * p[i] for w, p in zip(self.weights, parts)) for i in range(len(es))]
+        scores = [sum(w * p[i] for w, p in zip(self.weights, parts, strict=True)) for i in range(len(es))]
         top = [es[i] for i in sorted(range(len(es)), key=lambda i: scores[i], reverse=True)[: k or self.k]]
         if touch:
             for e in top:

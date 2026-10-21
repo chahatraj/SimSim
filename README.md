@@ -18,7 +18,7 @@ every piece replaceable.
 
 ```bash
 pip install git+https://github.com/chahatraj/SimSim                 # latest
-pip install "simsim[analysis] @ git+https://github.com/chahatraj/SimSim@v0.6.0"   # pinned, + pandas
+pip install "simsim[analysis] @ git+https://github.com/chahatraj/SimSim@v0.7.0"   # pinned, + pandas
 ```
 
 Python 3.10+. Core dependencies are `openai` and `pyyaml`; extras: `analysis` (pandas),
@@ -301,7 +301,7 @@ Drop `--dry-run` and add `--model ...` to run them on a real model.
 
 ## Status
 
-Early (v0.6). Interfaces may change.
+Early (v0.7): interfaces may change between minor versions; see CHANGELOG.md and docs/stability.md.
 
 ## License
 

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 from .components import Component
 from .llm import LLM, LLMResponse, Message, ScriptedLLM, ToolCall
@@ -33,7 +34,7 @@ class Persona:
         return {"name": self.name, "description": self.description, **self.attributes}
 
     @classmethod
-    def load_jsonl(cls, path: str | Path) -> list["Persona"]:
+    def load_jsonl(cls, path: str | Path) -> list[Persona]:
         """One JSON object per line: {"name": ..., "description": ..., any other keys -> attributes}."""
         out = []
         with open(path) as f:
@@ -344,7 +345,7 @@ class Agent:
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         self.memory.load(state["memory"])
-        for c, data in zip(self.components, state.get("components", [])):
+        for c, data in zip(self.components, state.get("components", []), strict=False):
             if data is not None:
                 c.load(data)
 
@@ -353,7 +354,7 @@ class Agent:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_text(json.dumps(self.state_dict(), indent=2, default=str))
 
-    def restore(self, path: str | Path) -> "Agent":
+    def restore(self, path: str | Path) -> Agent:
         self.load_state_dict(json.loads(Path(path).read_text()))
         return self
 
@@ -402,7 +403,10 @@ class Agent:
         labeled = options if isinstance(options, dict) else {chr(65 + i): o for i, o in enumerate(options)}
         listing = "\n".join(f"{k}. {v}" for k, v in labeled.items())
         prompt = f"{question}\n\n{listing}\n\nAnswer with the label only ({', '.join(labeled)})."
-        messages = [{"role": "system", "content": self.system_prompt(question, t, probing=True)}, {"role": "user", "content": prompt}]
+        messages = [
+            {"role": "system", "content": self.system_prompt(question, t, probing=True)},
+            {"role": "user", "content": prompt},
+        ]
         probs = self.llm.choice_probs(messages, list(labeled))
         if recorder:
             recorder.log("survey", agent=self.name, t=t, question=question, options=labeled, probs=probs)

@@ -40,13 +40,13 @@ class Component:
 
     heading: str = ""
 
-    def context(self, agent: "Agent", observation: str, t: int) -> str:
+    def context(self, agent: Agent, observation: str, t: int) -> str:
         return ""
 
-    def view(self, agent: "Agent", observation: str, t: int) -> str:
+    def view(self, agent: Agent, observation: str, t: int) -> str:
         return self.context(agent, observation, t)
 
-    def update(self, agent: "Agent", turn: "Turn", recorder: "Recorder | None" = None) -> None:
+    def update(self, agent: Agent, turn: Turn, recorder: Recorder | None = None) -> None:
         pass
 
     def dump(self) -> Any:
@@ -55,7 +55,7 @@ class Component:
     def load(self, data: Any) -> None:
         pass
 
-    def _llm(self, agent: "Agent") -> LLM:
+    def _llm(self, agent: Agent) -> LLM:
         return getattr(self, "llm", None) or agent.llm
 
 

@@ -4,18 +4,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simsim"
-version = "0.6.0"
+version = "0.7.0"
 description = "Build, run, and log LLM agent simulations for research"
+authors = [{name = "Chahat Raj"}]
+keywords = ["llm", "agents", "multi-agent", "simulation", "social simulation", "nlp"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = ["openai>=1.40", "pyyaml>=6"]
 
+[project.urls]
+Documentation = "https://chahatraj.github.io/SimSim/"
+Repository = "https://github.com/chahatraj/SimSim"
+Changelog = "https://github.com/chahatraj/SimSim/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 litellm = ["litellm"]
 checkpoint = ["cloudpickle"]
 analysis = ["pandas"]
-dev = ["pytest", "cloudpickle"]
+dev = ["pytest", "pytest-cov", "ruff", "cloudpickle"]
 docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5", "mkdocstrings[python]>=0.26"]
 
 [tool.setuptools.packages.find]
@@ -23,3 +37,18 @@ include = ["simsim*"]
 
 [project.scripts]
 simsim = "simsim.cli:main"
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I", "UP"]
+ignore = ["E731", "B008", "UP007", "UP045"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "B017"]
+"simsim/viewer.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

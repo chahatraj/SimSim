@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use SimSim in your research, please cite it as below."
+title: "SimSim: a library for LLM agent simulations"
+type: software
+authors:
+  - family-names: Raj
+    given-names: Chahat
+repository-code: "https://github.com/chahatraj/SimSim"
+url: "https://chahatraj.github.io/SimSim/"
+license: MIT
+version: 0.7.0
+date-released: 2026-10-21
+keywords: [LLM agents, multi-agent simulation, social simulation, agent-based modeling, NLP]

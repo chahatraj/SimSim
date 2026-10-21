@@ -9,14 +9,26 @@ Prints PASS/FAIL per feature and exits non-zero if any check fails.
 
 import argparse
 import sys
+import tempfile
 import time
 import traceback
 
-import tempfile
-
 from . import (
-    Agent, CachedLLM, Conversation, FullHistory, Impressions, InnerState, MemoryEntry, NextSpeaker, OpenAIEmbedder,
-    Plan, ReflectiveMemory, ScoredMemory, Simulation, make_llm, tool,
+    Agent,
+    CachedLLM,
+    Conversation,
+    FullHistory,
+    Impressions,
+    InnerState,
+    MemoryEntry,
+    NextSpeaker,
+    OpenAIEmbedder,
+    Plan,
+    ReflectiveMemory,
+    ScoredMemory,
+    Simulation,
+    make_llm,
+    tool,
 )
 
 WEATHER = {"paris": "rainy, 14C", "cairo": "sunny, 31C"}

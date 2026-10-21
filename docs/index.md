@@ -31,7 +31,7 @@ for every paper, and the features papers keep re-implementing are already here:
 pip install "simsim[analysis] @ git+https://github.com/chahatraj/SimSim"
 ```
 
-Python 3.10+. Pin a release for a paper: `...SimSim@v0.6.0`.
+Python 3.10+. Pin a release for a paper: `...SimSim@v0.7.0`.
 
 ## A first simulation
 

@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .record import read_jsonl
 
@@ -152,7 +153,7 @@ def summarize(df, by: str | list[str], metrics: str | list[str] | None = None, c
             n = len(x)
             mean = x.mean() if n else math.nan
             sem = x.std(ddof=1) / math.sqrt(n) if n > 1 else math.nan
-            rows.append({**dict(zip(by, key)), "metric": m, "mean": mean, "sem": sem, "n": n,
+            rows.append({**dict(zip(by, key, strict=True)), "metric": m, "mean": mean, "sem": sem, "n": n,
                          "ci_low": mean - z * sem if n > 1 else math.nan,
                          "ci_high": mean + z * sem if n > 1 else math.nan})
     return pd.DataFrame(rows)

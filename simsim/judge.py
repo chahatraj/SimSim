@@ -10,8 +10,9 @@ Use a different (ideally stronger) model than the agents, and report it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .llm import LLM
 from .record import read_jsonl

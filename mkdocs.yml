@@ -58,4 +58,5 @@ nav:
   - Config reference: config.md
   - Open models: open-models.md
   - Reporting in papers: papers.md
+  - Stability and versions: stability.md
   - API reference: api.md

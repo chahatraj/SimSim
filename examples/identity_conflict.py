@@ -19,12 +19,23 @@ Measures:
 """
 
 import argparse
-import json
 from collections import defaultdict
 
 from simsim import (
-    END, Agent, Conversation, Experiment, FullHistory, Judge, ScriptedLLM, Simulation, at, grid, make_llm,
-    probe, round_robin, survey,
+    END,
+    Agent,
+    Conversation,
+    Experiment,
+    FullHistory,
+    Judge,
+    ScriptedLLM,
+    Simulation,
+    at,
+    grid,
+    make_llm,
+    probe,
+    round_robin,
+    survey,
 )
 
 PAIRS = {
@@ -115,7 +126,8 @@ def build(cond, seed, model, judge_model, dry_run=False, turns=6):
         paragraph = next((x["answer"]["final_text"] for x in result.probes
                           if x["name"] == "final_text" and x["answer"]), "")
         third_clause = f', and a historian from {p["third"]} also took part' if cond["third"] == "outgroup" else ""
-        return judge.score(result.transcript(), topic=p["topic"], name_a=a_name, name_b=b_name, a=p["a"], b=p["b"], third=p["third"],
+        return judge.score(result.transcript(), topic=p["topic"], name_a=a_name, name_b=b_name, a=p["a"], b=p["b"],
+                           third=p["third"],
                            third_clause=third_clause, paragraph=paragraph)
 
     judge = Judge(ScriptedLLM(lambda m, t: '{"reasoning": "r", "dominant_perspective": "balanced", '

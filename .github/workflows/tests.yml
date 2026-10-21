@@ -11,8 +11,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev,checkpoint,analysis]"
-      - run: pytest -q
+      - run: pip install -e ".[dev,checkpoint,analysis]" ruff pytest-cov
+      - run: ruff check simsim tests examples
+      - run: pytest -q --cov=simsim --cov-report=term
       - name: examples (dry run, fake model)
         run: |
           for ex in negotiation memory_tasks social_feed identity_conflict survey_panel town public_goods; do

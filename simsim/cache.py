@@ -87,7 +87,7 @@ class CachedLLM(LLM):
         with self._db_lock:
             self._db.close()
 
-    def __enter__(self) -> "CachedLLM":
+    def __enter__(self) -> CachedLLM:
         return self
 
     def __exit__(self, *exc) -> None:

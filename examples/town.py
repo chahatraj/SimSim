@@ -11,8 +11,23 @@ and who shows up knowing about it? Information diffusion is measured with probes
 import argparse
 
 from simsim import (
-    END, Agent, Clock, Conversation, Experiment, HashEmbedder, Impressions, Plan, ReflectiveMemory, ScriptedLLM,
-    Simulation, at, bernoulli, grid, make_llm, probe, whisper,
+    END,
+    Agent,
+    Clock,
+    Conversation,
+    Experiment,
+    HashEmbedder,
+    Impressions,
+    Plan,
+    ReflectiveMemory,
+    ScriptedLLM,
+    Simulation,
+    at,
+    bernoulli,
+    grid,
+    make_llm,
+    probe,
+    whisper,
 )
 
 RESIDENTS = {

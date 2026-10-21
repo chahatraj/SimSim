@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..agent import Agent, Turn
+from ..agent import Agent
 from ..tools import tool
 from .base import Environment
 

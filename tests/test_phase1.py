@@ -24,15 +24,13 @@ from simsim import (
     ScriptedLLM,
     Simulation,
     SummaryMemory,
+    at,
     bernoulli,
     by_hour,
     emulated_tool,
     everyone,
-    probe,
-    at,
 )
 from simsim.clock import parse_step
-
 
 # ---- embeddings and scored memory --------------------------------------------
 

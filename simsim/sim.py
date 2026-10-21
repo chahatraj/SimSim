@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import pickle
 import random
-from pathlib import Path
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable
+from pathlib import Path
+from typing import Any
 
 from .agent import Agent, Turn
+from .clock import Clock
 from .envs.base import Environment
 from .memory import MemoryEntry
 from .record import Recorder
-from .clock import Clock
 from .schedule import Scheduler, call_scheduler, round_robin
 from .structured import Schema
 
@@ -36,17 +37,17 @@ class Result:
 class Intervention:
     """Runs `fn(sim, t)` at the start of every step where `when(t)` is true (or at the end)."""
 
-    def __init__(self, fn: Callable[["Simulation", int], None], when: Callable[[int], bool], at_end: bool = False):
+    def __init__(self, fn: Callable[[Simulation, int], None], when: Callable[[int], bool], at_end: bool = False):
         self.fn, self.when, self.at_end = fn, when, at_end
 
 
-def at(steps: int | Iterable[int], fn: Callable[["Simulation", int], None]) -> Intervention:
+def at(steps: int | Iterable[int], fn: Callable[[Simulation, int], None]) -> Intervention:
     """Run `fn` at the given step(s). Use `END` for after the final step."""
     s = {steps} if isinstance(steps, int) else set(steps)
     return Intervention(fn, lambda t: t in s, at_end=END in s)
 
 
-def every(k: int, fn: Callable[["Simulation", int], None], start: int = 0, at_end: bool = False) -> Intervention:
+def every(k: int, fn: Callable[[Simulation, int], None], start: int = 0, at_end: bool = False) -> Intervention:
     """Run `fn` every `k` steps from `start` (and after the final step if `at_end`)."""
     return Intervention(fn, lambda t: t >= start and (t - start) % k == 0, at_end=at_end)
 
@@ -56,19 +57,19 @@ def _label(fn: Callable, label: str) -> Callable:
     return fn
 
 
-def whisper(agent: str, text: str) -> Callable[["Simulation", int], None]:
+def whisper(agent: str, text: str) -> Callable[[Simulation, int], None]:
     """Plant a memory in an agent (Generative Agents' 'whisper'): it believes this happened."""
 
-    def fn(sim: "Simulation", t: int) -> None:
+    def fn(sim: Simulation, t: int) -> None:
         sim.agent(agent).memory.write(MemoryEntry(max(t, 0), text, kind="whisper"))
 
     return _label(fn, f"whisper({agent!r}, {text[:50]!r})")
 
 
-def add_agent(agent: Agent) -> Callable[["Simulation", int], None]:
+def add_agent(agent: Agent) -> Callable[[Simulation, int], None]:
     """A new agent joins the simulation."""
 
-    def fn(sim: "Simulation", t: int) -> None:
+    def fn(sim: Simulation, t: int) -> None:
         sim.agents.append(agent)
         sim.env.add_agent(agent)
 
@@ -76,10 +77,10 @@ def add_agent(agent: Agent) -> Callable[["Simulation", int], None]:
 
 
 def probe(question: str, schema: Schema | None = None, agents: list[str] | None = None,
-          name: str = "probe") -> Callable[["Simulation", int], None]:
+          name: str = "probe") -> Callable[[Simulation, int], None]:
     """Interview agents (without changing their memory); answers go to `Result.probes`."""
 
-    def fn(sim: "Simulation", t: int) -> None:
+    def fn(sim: Simulation, t: int) -> None:
         for a in sim.agents_named(agents):
             answer = a.ask(question, schema=schema, t=t, recorder=sim.recorder)
             sim.probes.append({"name": name, "t": t, "agent": a.name, "question": question, "answer": answer})
@@ -88,10 +89,10 @@ def probe(question: str, schema: Schema | None = None, agents: list[str] | None 
 
 
 def survey(question: str, options: list[str] | dict[str, str], agents: list[str] | None = None,
-           name: str = "survey") -> Callable[["Simulation", int], None]:
+           name: str = "survey") -> Callable[[Simulation, int], None]:
     """A closed-ended survey item answered with token probabilities; goes to `Result.probes`."""
 
-    def fn(sim: "Simulation", t: int) -> None:
+    def fn(sim: Simulation, t: int) -> None:
         for a in sim.agents_named(agents):
             probs = a.survey(question, options, t=t, recorder=sim.recorder)
             sim.probes.append({"name": name, "t": t, "agent": a.name, "question": question, "probs": probs})

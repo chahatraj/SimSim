@@ -1,4 +1,3 @@
-import json
 import textwrap
 
 import pytest
@@ -122,3 +121,39 @@ def test_cli_new_refuses_existing(tmp_path, monkeypatch):
     main(["new", "x"])
     with pytest.raises(SystemExit):
         main(["new", "x"])
+
+
+def test_task_sequence_config(tmp_path):
+    (tmp_path / "flights.py").write_text(textwrap.dedent('''
+        from simsim import tool
+
+        def make_tools(world):
+            @tool
+            def book(seat: str) -> str:
+                """Book a seat."""
+                world["seat"] = seat
+                return "booked"
+            return [book]
+
+        def aisle(turn, world):
+            return {"success": float(world.get("seat") == "aisle")}
+    '''))
+    path = tmp_path / "mem.yaml"
+    path.write_text(textwrap.dedent("""
+        models: {m: "openai:gpt-4o-mini"}
+        grid: {memory: {none: NoMemory, full: FullHistory}}
+        agents: [{name: assistant, model: m, memory: "${memory}"}]
+        environment:
+          type: TaskSequence
+          tools: "flights:make_tools"
+          tasks:
+            - {prompt: "I like aisle seats.", id: plant}
+            - {prompt: "Book me a seat.", id: probe, score: "flights:aisle"}
+        simulation: {max_steps: 5}
+    """))
+    ce = ConfigExperiment(load_config(path), dry_run=True)
+    sim = ce.build({"memory": "FullHistory"}, seed=0)
+    assert type(sim.agents[0].memory).__name__ == "FullHistory"
+    res = sim.run()
+    assert res.termination == "all tasks done" and res.metrics["mean_success"] == 0.0
+    assert [t["task"] for t in res.metrics["tasks"]] == ["plant", "probe"]

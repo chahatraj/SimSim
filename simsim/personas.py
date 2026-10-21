@@ -13,7 +13,8 @@ then (optionally) have an LLM write a short biography from them.
 from __future__ import annotations
 
 import random
-from typing import Any, Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 from .agent import Persona
 from .llm import LLM

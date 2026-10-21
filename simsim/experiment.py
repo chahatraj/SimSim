@@ -20,9 +20,10 @@ from __future__ import annotations
 import itertools
 import json
 import traceback
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 from .record import Recorder, read_jsonl
 from .sim import Simulation

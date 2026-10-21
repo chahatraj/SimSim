@@ -30,7 +30,7 @@ from .components import Component
 from .experiment import Experiment, grid
 from .judge import Judge
 from .llm import LLM, ScriptedLLM, make_llm
-from .memory import Memory, NoMemory
+from .memory import Memory
 from .personas import sample_personas
 from .sim import END, Simulation, at, every, probe, survey, whisper
 

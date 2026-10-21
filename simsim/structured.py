@@ -118,7 +118,7 @@ def validate(data: dict[str, Any], schema: Schema) -> dict[str, Any]:
             try:
                 v = t(v)
             except (TypeError, ValueError):
-                raise StructuredOutputError(f"{name!r} must be a {t.__name__}, got {v!r}")
+                raise StructuredOutputError(f"{name!r} must be a {t.__name__}, got {v!r}") from None
             if not lo <= v <= hi:
                 raise StructuredOutputError(f"{name!r} must be between {lo} and {hi}, got {v}")
         elif spec is bool:
@@ -130,7 +130,7 @@ def validate(data: dict[str, Any], schema: Schema) -> dict[str, Any]:
             try:
                 v = spec(v)
             except (TypeError, ValueError):
-                raise StructuredOutputError(f"{name!r} must be a {spec.__name__}, got {v!r}")
+                raise StructuredOutputError(f"{name!r} must be a {spec.__name__}, got {v!r}") from None
         elif spec is str:
             v = v if isinstance(v, str) else json.dumps(v)
         out[name] = v

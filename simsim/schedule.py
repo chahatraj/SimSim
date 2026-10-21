@@ -9,7 +9,8 @@ from __future__ import annotations
 import inspect
 import random
 import re
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from .agent import Agent
 from .llm import LLM
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 Scheduler = Callable[..., list[Agent]]
 
 
-def call_scheduler(scheduler: Scheduler, agents: list[Agent], t: int, rng: random.Random, sim: "Simulation"):
+def call_scheduler(scheduler: Scheduler, agents: list[Agent], t: int, rng: random.Random, sim: Simulation):
     try:
         takes_sim = "sim" in inspect.signature(scheduler).parameters
     except (TypeError, ValueError):
@@ -106,7 +107,7 @@ class NextSpeaker:
         self.llm, self.guidance, self.allow_repeat = llm, guidance, allow_repeat
         self.last: str | None = None
 
-    def __call__(self, agents: list[Agent], t: int, rng: random.Random, sim: "Simulation" = None) -> list[Agent]:
+    def __call__(self, agents: list[Agent], t: int, rng: random.Random, sim: Simulation = None) -> list[Agent]:
         names = [a.name for a in agents if self.allow_repeat or a.name != self.last] or [a.name for a in agents]
         transcript = sim.env.render() if sim is not None and hasattr(sim.env, "render") else ""
         if not transcript:
