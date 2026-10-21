@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simsim"
+version = "0.1.0"
+description = "Build, run, and log LLM agent simulations for research"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = ["openai>=1.40"]
+
+[project.optional-dependencies]
+litellm = ["litellm"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["simsim*"]
