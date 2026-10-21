@@ -1,0 +1,61 @@
+site_name: SimSim
+site_description: Build, run, and log LLM agent simulations for research
+repo_url: https://github.com/chahatraj/SimSim
+repo_name: chahatraj/SimSim
+site_url: https://chahatraj.github.io/SimSim/
+theme:
+  name: material
+  features: [navigation.sections, navigation.top, content.code.copy, search.suggest]
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      toggle: {icon: material/brightness-4, name: Light mode}
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.highlight
+  - pymdownx.superfences
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_root_heading: true
+            heading_level: 3
+            docstring_style: google
+            show_signature_annotations: true
+            separate_signature: true
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Concepts:
+      - Models: concepts/models.md
+      - Agents: concepts/agents.md
+      - Memory: concepts/memory.md
+      - Components: concepts/components.md
+      - Environments: concepts/environments.md
+      - Simulation: concepts/simulation.md
+      - Experiments and logs: concepts/experiments.md
+      - Judges: concepts/judges.md
+      - Analysis: concepts/analysis.md
+  - Recipes:
+      - recipes/index.md
+      - Negotiation: recipes/negotiation.md
+      - Support agent: recipes/support-agent.md
+      - Memory experiment: recipes/memory-experiment.md
+      - Survey panel: recipes/survey-panel.md
+      - Social feed: recipes/social-feed.md
+      - A small town: recipes/town.md
+      - Your own environment: recipes/custom-environment.md
+  - Config reference: config.md
+  - Open models: open-models.md
+  - Reporting in papers: papers.md
+  - API reference: api.md

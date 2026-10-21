@@ -280,3 +280,14 @@ def test_checkpoint_and_resume(tmp_path):
     res = Simulation.resume(path)
     assert len(res.turns) == 6 and res.steps == 6 and not path.exists()
     assert res.turns[-1].t == 5
+
+
+def test_request_seed_varies_but_reproduces():
+    from simsim import LLM
+
+    a, b = LLM(seed=7), LLM(seed=7)
+    m1, m2 = [{"role": "user", "content": "x"}], [{"role": "user", "content": "y"}]
+    seq_a = [a.request_seed(m1), a.request_seed(m1), a.request_seed(m2)]
+    seq_b = [b.request_seed(m1), b.request_seed(m1), b.request_seed(m2)]
+    assert seq_a == seq_b and len(set(seq_a)) == 3  # reproducible, yet each call differs
+    assert LLM(seed=8).request_seed(m1) != seq_a[0] and LLM().request_seed(m1) is None

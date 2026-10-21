@@ -11,6 +11,7 @@ with exponential backoff, and count tokens (and dollars, if you pass `price`).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -67,7 +68,10 @@ class LLM:
     """Base class. Subclasses implement `_chat` (and optionally `_retryable`).
 
     Args:
-        temperature, max_tokens, seed: sampling settings sent with every call.
+        temperature: sampling temperature sent with every call.
+        max_tokens: cap on generated tokens per call.
+        seed: makes runs reproducible; each request gets a seed derived from this one
+            and the prompt (see `request_seed`).
         retries: attempts after the first on transient errors.
         price: (dollars per 1M input tokens, dollars per 1M output tokens), to track cost.
         max_concurrency: at most this many calls in flight at once (across threads).
@@ -98,6 +102,7 @@ class LLM:
 
     def _init_sync(self):
         self._lock = threading.Lock()
+        self._seed_counts: dict[str, int] = {}
         self._slots = threading.BoundedSemaphore(self.max_concurrency) if self.max_concurrency else None
         self._next_slot = 0.0
 
@@ -112,6 +117,19 @@ class LLM:
         self._init_sync()
         if hasattr(self, "_connect"):
             self._connect()
+
+    def request_seed(self, messages: list[Message]) -> int | None:
+        """A per-request seed derived from `seed`, the prompt, and how often this exact prompt
+        was sent before. Runs stay reproducible, but different calls get different random
+        draws (sending one fixed seed with every call makes samples correlated)."""
+        if self.seed is None:
+            return None
+        key = hashlib.sha256(json.dumps(messages, sort_keys=True, default=str).encode()).hexdigest()
+        with self._lock:
+            n = self._seed_counts.get(key, 0)
+            self._seed_counts[key] = n + 1
+        digest = hashlib.sha256(f"{self.seed}:{key}:{n}".encode()).hexdigest()
+        return int(digest[:8], 16)
 
     def _wait_rate(self):
         if not self.rpm:
@@ -228,7 +246,7 @@ class OpenAIChat(LLM):
             "temperature": self.temperature, "max_tokens": self.max_tokens,
         }
         if self.seed is not None:
-            params["seed"] = self.seed
+            params["seed"] = self.request_seed(messages)
         if self.extra_body:
             params["extra_body"] = self.extra_body
         params.update(kwargs)
@@ -306,7 +324,7 @@ class LiteLLMChat(LLM):
             model=self.model, messages=messages, temperature=self.temperature, max_tokens=self.max_tokens
         )
         if self.seed is not None:
-            params["seed"] = self.seed
+            params["seed"] = self.request_seed(messages)
         if tools:
             params["tools"] = tools
         params.update(kwargs)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "simsim"
-version = "0.5.0"
+version = "0.6.0"
 description = "Build, run, and log LLM agent simulations for research"
 readme = "README.md"
 license = {text = "MIT"}
@@ -16,6 +16,7 @@ litellm = ["litellm"]
 checkpoint = ["cloudpickle"]
 analysis = ["pandas"]
 dev = ["pytest", "cloudpickle"]
+docs = ["mkdocs>=1.6,<2", "mkdocs-material>=9.5", "mkdocstrings[python]>=0.26"]
 
 [tool.setuptools.packages.find]
 include = ["simsim*"]

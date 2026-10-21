@@ -1,5 +1,7 @@
 # SimSim
 
+**Documentation: https://chahatraj.github.io/SimSim/**
+
 A small Python library for building LLM agent simulations for research. You can
 run a single agent with memory and tools working through tasks, or many agents
 with personas interacting in a shared world. Every model call is logged, and
@@ -16,7 +18,7 @@ every piece replaceable.
 
 ```bash
 pip install git+https://github.com/chahatraj/SimSim                 # latest
-pip install "simsim[analysis] @ git+https://github.com/chahatraj/SimSim@v0.5.0"   # pinned, + pandas
+pip install "simsim[analysis] @ git+https://github.com/chahatraj/SimSim@v0.6.0"   # pinned, + pandas
 ```
 
 Python 3.10+. Core dependencies are `openai` and `pyyaml`; extras: `analysis` (pandas),
@@ -299,7 +301,7 @@ Drop `--dry-run` and add `--model ...` to run them on a real model.
 
 ## Status
 
-Early (v0.5). Interfaces may change.
+Early (v0.6). Interfaces may change.
 
 ## License
 

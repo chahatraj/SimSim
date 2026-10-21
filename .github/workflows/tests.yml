@@ -15,7 +15,7 @@ jobs:
       - run: pytest -q
       - name: examples (dry run, fake model)
         run: |
-          for ex in negotiation memory_tasks social_feed identity_conflict; do
+          for ex in negotiation memory_tasks social_feed identity_conflict survey_panel town public_goods; do
             python examples/$ex.py --dry-run --seeds 1 --out /tmp/dry/$ex
           done
           for cfg in examples/configs/*.yaml; do
