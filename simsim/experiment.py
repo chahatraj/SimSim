@@ -67,7 +67,8 @@ class Experiment:
         try:
             sim = self.build(self.conditions[name], seed)
             res = sim.run(rec)
-            row.update(steps=res.steps, usage=res.usage, metrics=res.metrics)
+            row.update(steps=res.steps, termination=res.termination, usage=res.usage, metrics=res.metrics,
+                       probes=res.probes)
         except Exception as e:
             row["error"] = f"{type(e).__name__}: {e}"
             rec.log("error", traceback=traceback.format_exc())

@@ -108,8 +108,8 @@ def test_conversation_round_robin():
     b = Agent("seller", ScriptedLLM(["Counter 150.", "unused"]))
     env = Conversation("Negotiate a bike price.", private={"buyer": "Budget 140."})
     res = Simulation(env, [a, b], max_steps=10).run()
-    assert [m["text"] for m in res.metrics["transcript"]] == ["Offer 100.", "Counter 150.", "Deal. [END]"]
-    assert res.metrics["ended_by"] == "buyer"
+    assert [m["text"] for m in res.metrics["transcript"]] == ["Offer 100.", "Counter 150.", "Deal."]
+    assert res.metrics["ended_by"] == "buyer" and res.termination == "ended by buyer"
     first_obs, second_obs = a.llm.calls[0][1]["content"], a.llm.calls[1][1]["content"]
     assert "Budget 140." in first_obs and "Budget 140." not in second_obs
     assert "seller: Counter 150." in second_obs and "Offer 100." not in second_obs  # show="new"

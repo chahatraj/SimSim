@@ -4,13 +4,19 @@ Every backend takes OpenAI-style chat messages and returns an `LLMResponse`.
 One interface covers API models (OpenAI, Anthropic, Together, ...), locally
 served open models (vLLM, SGLang, Ollama all speak the OpenAI protocol), and
 `ScriptedLLM`, a fake model for free, deterministic tests.
+
+All backends retry transient failures (rate limits, timeouts, server errors)
+with exponential backoff, and count tokens (and dollars, if you pass `price`).
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
+import random
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -29,6 +35,8 @@ class LLMResponse:
     text: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: dict[str, int] = field(default_factory=dict)
+    reasoning: str = ""  # thinking-model reasoning, if the server returns it separately
+    finish_reason: str = ""  # "length" means the answer was cut off by max_tokens
     raw: Any = None
 
     def assistant_message(self) -> Message:
@@ -46,20 +54,53 @@ class LLMResponse:
         return msg
 
 
+def parse_arguments(raw: str | None) -> dict[str, Any]:
+    """Tool-call arguments as a dict. Malformed JSON is kept under `_raw` so the tool can report it."""
+    try:
+        args = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {"_raw": raw}
+    return args if isinstance(args, dict) else {"_raw": raw}
+
+
 class LLM:
-    """Base class. Subclasses implement `_chat`."""
+    """Base class. Subclasses implement `_chat` (and optionally `_retryable`).
+
+    Args:
+        temperature, max_tokens, seed: sampling settings sent with every call.
+        retries: attempts after the first on transient errors.
+        price: (dollars per 1M input tokens, dollars per 1M output tokens), to track cost.
+    """
 
     model: str = "unknown"
 
-    def __init__(self, temperature: float = 0.7, max_tokens: int = 1024, seed: int | None = None):
+    def __init__(
+        self,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        seed: int | None = None,
+        retries: int = 6,
+        price: tuple[float, float] | None = None,
+    ):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.seed = seed
-        self._usage = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+        self.retries = retries
+        self.price = price
+        self._usage = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "retries": 0}
         self._lock = threading.Lock()
 
     def chat(self, messages: list[Message], tools: list[dict] | None = None, **kwargs) -> LLMResponse:
-        resp = self._chat(messages, tools or None, **kwargs)
+        for attempt in range(self.retries + 1):
+            try:
+                resp = self._chat(messages, tools or None, **kwargs)
+                break
+            except Exception as e:
+                if attempt == self.retries or not self._retryable(e):
+                    raise
+                with self._lock:
+                    self._usage["retries"] += 1
+                time.sleep(min(60.0, 2.0**attempt) * (0.5 + random.random()))
         with self._lock:
             self._usage["calls"] += 1
             self._usage["prompt_tokens"] += resp.usage.get("prompt_tokens", 0)
@@ -73,9 +114,22 @@ class LLM:
         ]
         return self.chat(messages, **kwargs).text
 
+    def choice_probs(self, messages: list[Message], options: list[str]) -> dict[str, float]:
+        """Probability of each option as the model's next token (renormalized over `options`).
+
+        Used for survey-style probes: label options "A", "B", ... or "1".."7". Needs a
+        backend that returns token log-probs (OpenAI, vLLM); others raise NotImplementedError.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not return log-probs")
+
     @property
-    def usage(self) -> dict[str, int]:
-        return dict(self._usage)
+    def usage(self) -> dict[str, float]:
+        u: dict[str, float] = dict(self._usage)
+        if self.price:
+            u["cost_usd"] = round(
+                (u["prompt_tokens"] * self.price[0] + u["completion_tokens"] * self.price[1]) / 1e6, 6
+            )
+        return u
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -86,49 +140,110 @@ class LLM:
             "seed": self.seed,
         }
 
+    def _retryable(self, e: Exception) -> bool:
+        return not isinstance(e, (TypeError, ValueError, KeyError, AttributeError, NotImplementedError))
+
     def _chat(self, messages, tools, **kwargs) -> LLMResponse:  # pragma: no cover
         raise NotImplementedError
 
 
-class OpenAIChat(LLM):
-    """Any OpenAI-compatible endpoint: OpenAI, vLLM, SGLang, Ollama, Together, Anthropic's compat API."""
+def _usage_of(out) -> dict[str, int]:
+    u = getattr(out, "usage", None)
+    return {"prompt_tokens": u.prompt_tokens, "completion_tokens": u.completion_tokens} if u else {}
 
-    def __init__(self, model: str, base_url: str | None = None, api_key: str | None = None, **kwargs):
+
+def _reasoning_of(msg) -> str:
+    # vLLM's reasoning parsers put thinking in `reasoning_content` (older) or `reasoning` (newer).
+    return getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None) or ""
+
+
+class OpenAIChat(LLM):
+    """Any OpenAI-compatible endpoint: OpenAI, vLLM, SGLang, Ollama, Together, Anthropic's compat API.
+
+    `extra_body` is sent with every request, e.g. {"chat_template_kwargs": {"enable_thinking": False}}
+    to turn off thinking on Qwen3-style models served by vLLM.
+    """
+
+    def __init__(
+        self, model: str, base_url: str | None = None, api_key: str | None = None,
+        extra_body: dict | None = None, timeout: float = 300, **kwargs,
+    ):
         super().__init__(**kwargs)
         from openai import OpenAI
 
         self.model = model
         self.base_url = base_url
-        self.client = OpenAI(base_url=base_url, api_key=api_key or os.environ.get("OPENAI_API_KEY", "EMPTY"))
+        self.extra_body = extra_body or {}
+        # Retries happen in LLM.chat, so the client itself does not retry.
+        self.client = OpenAI(
+            base_url=base_url, api_key=api_key or os.environ.get("OPENAI_API_KEY", "EMPTY"),
+            max_retries=0, timeout=timeout,
+        )
 
-    def _chat(self, messages, tools, **kwargs) -> LLMResponse:
+    def _params(self, messages, **kwargs) -> dict[str, Any]:
         params: dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            "model": self.model, "messages": messages,
+            "temperature": self.temperature, "max_tokens": self.max_tokens,
         }
         if self.seed is not None:
             params["seed"] = self.seed
+        if self.extra_body:
+            params["extra_body"] = self.extra_body
+        params.update(kwargs)
+        return params
+
+    def _chat(self, messages, tools, **kwargs) -> LLMResponse:
+        params = self._params(messages, **kwargs)
         if tools:
             params["tools"] = tools
-        params.update(kwargs)
         out = self.client.chat.completions.create(**params)
-        choice = out.choices[0].message
-        calls = []
-        for c in choice.tool_calls or []:
-            try:
-                args = json.loads(c.function.arguments or "{}")
-            except json.JSONDecodeError:
-                args = {"_raw": c.function.arguments}
-            calls.append(ToolCall(id=c.id, name=c.function.name, arguments=args))
-        usage = {}
-        if out.usage:
-            usage = {"prompt_tokens": out.usage.prompt_tokens, "completion_tokens": out.usage.completion_tokens}
-        return LLMResponse(text=choice.content or "", tool_calls=calls, usage=usage, raw=out)
+        msg = out.choices[0].message
+        calls = [
+            ToolCall(id=c.id, name=c.function.name, arguments=parse_arguments(c.function.arguments))
+            for c in (msg.tool_calls or [])
+        ]
+        return LLMResponse((msg.content or "").strip(), calls, _usage_of(out), _reasoning_of(msg),
+                           out.choices[0].finish_reason or "", out)
 
-    def describe(self) -> dict[str, Any]:
-        return {**super().describe(), "base_url": self.base_url}
+    def choice_probs(self, messages, options):
+        params = self._params(messages, max_tokens=1, logprobs=True, top_logprobs=20, temperature=0)
+        out = self.chat_raw(params)
+        top = out.choices[0].logprobs.content[0].top_logprobs
+        probs = {o: 0.0 for o in options}
+        for lp in top:
+            tok = lp.token.strip()
+            if tok in probs:
+                probs[tok] += math.exp(lp.logprob)
+        z = sum(probs.values())
+        return {o: p / z for o, p in probs.items()} if z else probs
+
+    def chat_raw(self, params: dict[str, Any]):
+        """One raw API call with this backend's retry policy (for features beyond chat)."""
+        for attempt in range(self.retries + 1):
+            try:
+                out = self.client.chat.completions.create(**params)
+                usage = _usage_of(out)
+                with self._lock:
+                    self._usage["calls"] += 1
+                    for k in ("prompt_tokens", "completion_tokens"):
+                        self._usage[k] += usage.get(k, 0)
+                return out
+            except Exception as e:
+                if attempt == self.retries or not self._retryable(e):
+                    raise
+                time.sleep(min(60.0, 2.0**attempt) * (0.5 + random.random()))
+
+    def _retryable(self, e):
+        import openai
+
+        if isinstance(e, (openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError)):
+            return True
+        if isinstance(e, openai.APIStatusError):
+            return e.status_code >= 500 or e.status_code in (408, 409, 429)
+        return False
+
+    def describe(self):
+        return {**super().describe(), "base_url": self.base_url, "extra_body": self.extra_body}
 
 
 class LiteLLMChat(LLM):
@@ -151,19 +266,17 @@ class LiteLLMChat(LLM):
             params["tools"] = tools
         params.update(kwargs)
         out = self._litellm.completion(**params)
-        choice = out.choices[0].message
+        msg = out.choices[0].message
         calls = [
-            ToolCall(id=c.id, name=c.function.name, arguments=json.loads(c.function.arguments or "{}"))
-            for c in (choice.tool_calls or [])
+            ToolCall(id=c.id, name=c.function.name, arguments=parse_arguments(c.function.arguments))
+            for c in (msg.tool_calls or [])
         ]
-        usage = {}
-        if getattr(out, "usage", None):
-            usage = {"prompt_tokens": out.usage.prompt_tokens, "completion_tokens": out.usage.completion_tokens}
-        return LLMResponse(text=choice.content or "", tool_calls=calls, usage=usage, raw=out)
+        return LLMResponse((msg.content or "").strip(), calls, _usage_of(out), _reasoning_of(msg),
+                           out.choices[0].finish_reason or "", out)
 
 
 class ScriptedLLM(LLM):
-    """A fake model for tests and dry runs. Costs nothing.
+    """A fake model for tests and dry runs. Costs nothing and never retries.
 
     `script` is either a list of responses (str or LLMResponse) returned in order,
     or a function `(messages, tools) -> str | LLMResponse`.
@@ -172,6 +285,7 @@ class ScriptedLLM(LLM):
     model = "scripted"
 
     def __init__(self, script: list | Callable[[list[Message], list[dict] | None], Any] | None = None, **kwargs):
+        kwargs.setdefault("retries", 0)
         super().__init__(**kwargs)
         self.script = script if script is not None else (lambda m, t: "ok")
         self._i = 0
@@ -187,6 +301,10 @@ class ScriptedLLM(LLM):
             out = self.script[self._i]
             self._i += 1
         return out if isinstance(out, LLMResponse) else LLMResponse(text=str(out))
+
+    def choice_probs(self, messages, options):
+        text = self.chat(messages).text.strip()
+        return {o: float(o == text) for o in options}
 
 
 _PROVIDERS = {

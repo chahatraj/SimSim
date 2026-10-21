@@ -15,11 +15,25 @@ class Environment:
         tools_for(agent, t) -> extra tools the agent may use this turn
         apply(turn, t)      -> update the world with what the agent did
     and stops when done(t) is True. metrics() is the result saved per run.
+
+    To end the run from inside the environment, call `self.stop("reason")`;
+    the reason is saved as the run's termination reason.
     """
+
+    stop_reason: str | None = None
 
     def reset(self, agents: list[Agent], rng: random.Random) -> None:
         self.agents = {a.name: a for a in agents}
         self.rng = rng
+        self.stop_reason = None
+
+    def add_agent(self, agent: Agent) -> None:
+        """An agent joins mid-run. Subclasses with per-agent state should extend this."""
+        self.agents[agent.name] = agent
+
+    def stop(self, reason: str) -> None:
+        if self.stop_reason is None:
+            self.stop_reason = reason
 
     def observe(self, agent: Agent, t: int) -> str | None:
         raise NotImplementedError
@@ -31,7 +45,7 @@ class Environment:
         pass
 
     def done(self, t: int) -> bool:
-        return False
+        return self.stop_reason is not None
 
     def metrics(self) -> dict[str, Any]:
         return {}

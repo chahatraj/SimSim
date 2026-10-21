@@ -52,6 +52,16 @@ class Feed(Environment):
         self.follows = {a.name: set(self.initial_follows.get(a.name, [])) for a in agents}
         self._news_i = 0
 
+    def add_agent(self, agent):
+        super().add_agent(agent)
+        self.follows.setdefault(agent.name, set(self.initial_follows.get(agent.name, [])))
+
+    def inject_post(self, author: str, text: str, t: int = -1) -> Post:
+        """Put a post on the platform from outside the agents (news, misinformation, a confederate)."""
+        p = Post(len(self.posts), author, text, t)
+        self.posts.append(p)
+        return p
+
     def rank(self, posts: list[Post], agent: Agent) -> list[Post]:
         if self.ranking == "popular":
             return sorted(posts, key=lambda p: (len(p.likes), p.t, p.id), reverse=True)
