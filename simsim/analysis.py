@@ -144,6 +144,10 @@ def summarize(df, by: str | list[str], metrics: str | list[str] | None = None, c
     if metrics is None:
         metrics = [c for c in df.select_dtypes("number").columns if c not in by and c != "seed"]
     metrics = [metrics] if isinstance(metrics, str) else list(metrics)
+    missing = [m for m in metrics if m not in df.columns]
+    if missing:
+        numeric = [c for c in df.select_dtypes("number").columns if c not in by and c != "seed"]
+        raise KeyError(f"no column {', '.join(missing)}; numeric columns are: {', '.join(numeric)}")
     z = {0.9: 1.645, 0.95: 1.96, 0.99: 2.576}.get(ci, 1.96)
     rows = []
     for key, g in df.groupby(by, dropna=False):

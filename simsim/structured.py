@@ -160,6 +160,10 @@ def structured_chat(
         try:
             return parse(resp.text, schema), messages, errors
         except StructuredOutputError as e:
+            if resp.finish_reason == "length":
+                hint = " (thinking used the budget; raise max_tokens or turn thinking off)" if resp.reasoning else ""
+                errors.append(f"response cut off at max_tokens={llm.max_tokens}{hint}")
+                break  # asking again with the same budget would fail the same way
             errors.append(str(e))
             messages.append({
                 "role": "user",

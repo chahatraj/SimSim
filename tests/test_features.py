@@ -315,3 +315,9 @@ def test_truncation_reported():
     llm = ScriptedLLM([LLMResponse("", reasoning="long thoughts", finish_reason="length")] * 3)
     turn = Agent("a", llm, output_schema={"reply": str}).act("hi")
     assert "cut off at max_tokens" in turn.error and "thinking" in turn.error
+
+
+def test_structured_cut_off_is_explained_and_not_retried():
+    llm = ScriptedLLM([LLMResponse("", reasoning="long thoughts", finish_reason="length")] * 5)
+    data, _, errors = structured_chat(llm, [{"role": "user", "content": "go"}], {"x": str})
+    assert data is None and len(llm.calls) == 1 and "cut off at max_tokens" in errors[0] and "thinking" in errors[0]

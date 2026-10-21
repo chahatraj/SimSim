@@ -8,6 +8,6 @@ authors:
 repository-code: "https://github.com/chahatraj/SimSim"
 url: "https://chahatraj.github.io/SimSim/"
 license: MIT
-version: 0.7.0
+version: 0.7.1
 date-released: 2026-10-21
 keywords: [LLM agents, multi-agent simulation, social simulation, agent-based modeling, NLP]

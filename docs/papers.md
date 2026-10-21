@@ -22,7 +22,7 @@ and where to find it.
 
 ## Reproducibility
 
-- **Pin SimSim**: `pip install "simsim @ git+https://github.com/chahatraj/SimSim@v0.7.0"`.
+- **Pin SimSim**: `pip install "simsim @ git+https://github.com/chahatraj/SimSim@v0.7.1"`.
 - **Pin models**: dated API snapshots (`gpt-4o-mini-2024-07-18`) or a specific
   open checkpoint revision.
 - **Seeds**: with `seed` set, each request gets a deterministic seed derived from

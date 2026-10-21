@@ -80,8 +80,15 @@ def _summarize(args) -> int:
     if runs.empty:
         print("No finished runs found.")
         return 1
+    for col in [c for c in runs.columns if c.endswith(".error") and runs[c].notna().any()]:
+        bad = runs[col].dropna()
+        print(f"warning: {len(bad)} of {len(runs)} runs have {col}: {str(bad.iloc[0])[:200]}", file=sys.stderr)
     by = args.by or ["condition"]
-    table = summarize(runs, by=by, metrics=args.metric)
+    try:
+        table = summarize(runs, by=by, metrics=args.metric)
+    except KeyError as e:
+        print(f"error: {e.args[0]}", file=sys.stderr)
+        return 1
     import pandas as pd
 
     with pd.option_context("display.max_rows", 500, "display.width", 200):

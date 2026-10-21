@@ -28,7 +28,7 @@ from .sim import END, Intervention, Result, Simulation, add_agent, at, every, pr
 from .structured import StructuredOutputError, extract_json, format_instructions, structured_chat
 from .tools import Tool, emulated_tool, tool
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 # The public, stable API (see docs: "Stability"). Anything not listed here may change.
 __all__ = [

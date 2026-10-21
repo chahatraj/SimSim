@@ -6,7 +6,7 @@ SimSim is pre-1.0: interfaces may still change between minor versions (0.6 →
 the version a paper used:
 
 ```bash
-pip install "simsim @ git+https://github.com/chahatraj/SimSim@v0.7.0"
+pip install "simsim @ git+https://github.com/chahatraj/SimSim@v0.7.1"
 ```
 
 ## What counts as the public API

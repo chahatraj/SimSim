@@ -3,6 +3,18 @@
 SimSim follows [semantic versioning](https://semver.org/) from 1.0. Before 1.0,
 minor versions (0.x) may change interfaces; every change is listed here.
 
+## 0.7.1
+
+Found by installing from GitHub into a fresh environment and running the
+quickstart on a real model:
+
+- Structured calls (agents' schemas, probes, judges) now report "response cut
+  off at max_tokens (thinking used the budget...)" instead of "no JSON object
+  found", and stop retrying an answer that cannot fit.
+- `simsim summarize` warns when runs contain judge or evaluator errors, and a
+  missing metric lists the available columns instead of a traceback.
+- The `simsim new` template notes the token budget thinking models need.
+
 ## 0.7.0
 
 - Repository readiness: `__all__` defines the public API, a stability policy,

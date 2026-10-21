@@ -121,3 +121,9 @@ def test_transcript_and_viewer(exp_dir):
     content = page.read_text()
     assert page.name == "view.html" and "Hello from warm" in content and "<\\/script" not in content.split("const RUNS")[0]
     assert content.count("<script>") == 1
+
+
+def test_summarize_missing_metric_lists_columns(exp_dir):
+    runs = load_runs(exp_dir)
+    with pytest.raises(KeyError, match="numeric columns are: .*judge.score"):
+        summarize(runs, by="style", metrics="judge.nope")

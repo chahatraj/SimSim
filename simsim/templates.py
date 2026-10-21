@@ -21,6 +21,7 @@ models:
   judge:
     spec: openai:gpt-4o
     temperature: 0
+    max_tokens: 1024                   # thinking models need more (or thinking off via extra_body)
 
 grid:                                  # every combination is a condition; use as ${{factor}}
   style:
