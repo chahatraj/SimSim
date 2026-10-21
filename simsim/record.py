@@ -25,7 +25,7 @@ class Recorder:
             self._fh = open(self.path, "a")
 
     def log(self, event: str, **data: Any) -> None:
-        rec = {"run": self.run_id, "event": event, "time": time.time(), **data}
+        rec = {"run": self.run_id, "event": event, "ts": time.time(), **data}
         with self._lock:
             self.events.append(rec)
             if self.path:

@@ -206,6 +206,22 @@ If you rerun the same script, finished runs are skipped. Runs that crashed are
 logged with an `error` field and retried next time. Build LLM objects inside
 `build`, so token and cost counts are per run.
 
+## Analyzing results
+
+```python
+from simsim.analysis import load_runs, load_turns, load_probes, summarize, pass_hat_k, transcript
+runs = load_runs("runs/memory_v1")            # one row per run; grid factors become columns
+summarize(runs, by=["model", "memory"], metrics="mean_success")    # mean, sem, n, 95% CI
+turns = load_turns("runs/memory_v1")          # one row per turn: text, private.*, component.*
+probes = load_probes("runs/memory_v1")        # survey rows get `top`, `expected`, p.<label>
+print(transcript("runs/memory_v1/memory=none/seed0.jsonl", private=True))
+
+from simsim.viewer import write_viewer
+write_viewer("runs/memory_v1")                # runs/memory_v1/view.html: browse every run offline
+```
+
+`pip install pandas` for the tables (`pip install -e ".[analysis]"`).
+
 ## Writing your own pieces
 
 **A new environment.** Subclass `Environment` and implement `observe`. Implement
