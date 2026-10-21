@@ -1,0 +1,48 @@
+# A small social network: does popularity-ranked feed change who posts and how much?
+name: social_feed
+out: runs/social_feed
+seeds: 2
+
+models:
+  main:
+    spec: "openai:gpt-4o-mini"
+    temperature: 0.9
+    max_tokens: 300
+    max_concurrency: 16
+
+grid:
+  ranking: [recent, popular]
+
+population:
+  count: 30
+  attributes:
+    age: [19, 25, 34, 45, 58, 67]
+    politics: {liberal: 0.4, conservative: 0.35, moderate: 0.25}
+    job: [nurse, teacher, farmer, engineer, student, retiree, cook]
+  agent:
+    model: main
+    persona: "You are an ordinary user of a social media platform."
+    memory: {type: WindowMemory, k: 5}
+    remember_observations: 300
+    max_tool_steps: 3
+
+environment:
+  type: Feed
+  ranking: "${ranking}"
+  timeline_size: 8
+  news:
+    - "City council approves new bike lanes downtown."
+    - "Gas prices rise for the third straight week."
+    - "State announces teacher pay raise."
+
+simulation:
+  max_steps: 12
+  scheduler: {type: bernoulli, p: 0.3}
+  simultaneous: true
+  clock: {start: "2024-05-06 08:00", step: "1h"}
+
+probes:
+  - type: survey
+    question: "People on this platform are generally hostile to people like me."
+    options: likert5
+    at: [0, end]

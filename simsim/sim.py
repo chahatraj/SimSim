@@ -51,13 +51,18 @@ def every(k: int, fn: Callable[["Simulation", int], None], start: int = 0, at_en
     return Intervention(fn, lambda t: t >= start and (t - start) % k == 0, at_end=at_end)
 
 
+def _label(fn: Callable, label: str) -> Callable:
+    fn.__qualname__ = label
+    return fn
+
+
 def whisper(agent: str, text: str) -> Callable[["Simulation", int], None]:
     """Plant a memory in an agent (Generative Agents' 'whisper'): it believes this happened."""
 
     def fn(sim: "Simulation", t: int) -> None:
         sim.agent(agent).memory.write(MemoryEntry(max(t, 0), text, kind="whisper"))
 
-    return fn
+    return _label(fn, f"whisper({agent!r}, {text[:50]!r})")
 
 
 def add_agent(agent: Agent) -> Callable[["Simulation", int], None]:
@@ -67,7 +72,7 @@ def add_agent(agent: Agent) -> Callable[["Simulation", int], None]:
         sim.agents.append(agent)
         sim.env.add_agent(agent)
 
-    return fn
+    return _label(fn, f"add_agent({agent.name!r})")
 
 
 def probe(question: str, schema: Schema | None = None, agents: list[str] | None = None,
@@ -79,7 +84,7 @@ def probe(question: str, schema: Schema | None = None, agents: list[str] | None 
             answer = a.ask(question, schema=schema, t=t, recorder=sim.recorder)
             sim.probes.append({"name": name, "t": t, "agent": a.name, "question": question, "answer": answer})
 
-    return fn
+    return _label(fn, f"probe({name!r}: {question[:50]!r})")
 
 
 def survey(question: str, options: list[str] | dict[str, str], agents: list[str] | None = None,
@@ -91,7 +96,7 @@ def survey(question: str, options: list[str] | dict[str, str], agents: list[str]
             probs = a.survey(question, options, t=t, recorder=sim.recorder)
             sim.probes.append({"name": name, "t": t, "agent": a.name, "question": question, "probs": probs})
 
-    return fn
+    return _label(fn, f"survey({name!r}: {question[:50]!r})")
 
 
 class Simulation:

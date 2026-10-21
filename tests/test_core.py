@@ -189,3 +189,10 @@ def test_make_llm_specs():
     assert make_llm("ollama:llama3.1").base_url == "http://localhost:11434/v1"
     with pytest.raises(ValueError):
         make_llm("nope:x")
+
+
+def test_make_llm_missing_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+        make_llm("openai:gpt-4o-mini")
+    assert make_llm("openai:gpt-4o-mini", api_key="sk-test").model == "gpt-4o-mini"

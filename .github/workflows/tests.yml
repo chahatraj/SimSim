@@ -13,7 +13,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev,checkpoint,analysis]"
       - run: pytest -q
-      - run: |
+      - name: examples (dry run, fake model)
+        run: |
           for ex in negotiation memory_tasks social_feed identity_conflict; do
             python examples/$ex.py --dry-run --seeds 1 --out /tmp/dry/$ex
+          done
+          for cfg in examples/configs/*.yaml; do
+            simsim run "$cfg" --dry-run --seeds 1 --out "/tmp/dry/cfg_$(basename $cfg .yaml)"
           done

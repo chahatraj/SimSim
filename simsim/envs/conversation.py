@@ -22,7 +22,8 @@ class Conversation(Environment):
             only the user should end.
         min_turns: end tokens before this many messages are removed and ignored
             (models otherwise tend to "end" in their first message).
-        tools: per-agent tools, e.g. {"assistant": [lookup_order, refund]}.
+        tools: per-agent tools, e.g. {"assistant": [lookup_order, refund]}, or per-agent
+            factories `world -> list[Tool]` so each run's tools act on that run's `world`.
         max_turns: stop after this many messages.
         judge: optional `(transcript_text) -> bool`, checked every `judge_every`
             messages; True ends the conversation (e.g. an LLM deciding a deal is
@@ -40,7 +41,7 @@ class Conversation(Environment):
         end_token: str | None = "[END]",
         enders: list[str] | None = None,
         min_turns: int = 2,
-        tools: dict[str, list[Tool]] | None = None,
+        tools: dict[str, list[Tool] | Callable[[dict], list[Tool]]] | None = None,
         max_turns: int | None = None,
         judge: Callable[[str], bool] | None = None,
         judge_every: int = 2,
@@ -69,6 +70,7 @@ class Conversation(Environment):
         self.briefed: set[str] = set()
         self.ended_by: str | None = None
         self.world = copy.deepcopy(self.initial_world)
+        self.agent_tools = {name: (ts(self.world) if callable(ts) else list(ts)) for name, ts in self.tools.items()}
 
     def add_agent(self, agent):
         super().add_agent(agent)
@@ -97,7 +99,7 @@ class Conversation(Environment):
         return "\n\n".join(parts)
 
     def tools_for(self, agent, t):
-        return self.tools.get(agent.name, [])
+        return self.agent_tools.get(agent.name, [])
 
     def _ends(self, text: str) -> bool:
         lines = [ln for ln in text.strip().splitlines() if ln.strip()]
@@ -131,8 +133,9 @@ class Conversation(Environment):
 
 USER_SIMULATOR_INSTRUCTIONS = """You are playing a user talking to an AI assistant. Stay in character.
 Pursue your goal below. Reveal information only when it is needed, as a real user would.
-Do not invent details beyond your goal and persona. When your goal is met, or clearly
-cannot be met, end the conversation with {end_token} on the last line.
+Do not invent details beyond your goal and persona. Wait for the assistant to confirm what
+it actually did. Only when your goal is met, or clearly cannot be met, end the conversation
+with {end_token} on the last line; never in a message that asks for something.
 
 Your goal: {goal}"""
 

@@ -1,8 +1,8 @@
 """Check that a model endpoint supports everything SimSim uses.
 
-    python scripts/smoke_test.py vllm:meta-llama/Llama-3.1-8B-Instruct@http://gpu027:8000/v1
-    python scripts/smoke_test.py openai:gpt-4o-mini
-    python scripts/smoke_test.py vllm:Qwen/Qwen3.5-9B@http://gpu027:8001/v1 --no-thinking
+    simsim smoke openai:gpt-4o-mini
+    simsim smoke vllm:Qwen/Qwen3.5-9B@http://gpu027:8001/v1 --no-thinking
+    simsim smoke vllm:Qwen/Qwen3.5-4B@http://gpu027:8000/v1 --embed BAAI/bge-small-en-v1.5@http://gpu027:8002/v1
 
 Prints PASS/FAIL per feature and exits non-zero if any check fails.
 """
@@ -14,7 +14,7 @@ import traceback
 
 import tempfile
 
-from simsim import (
+from . import (
     Agent, CachedLLM, Conversation, FullHistory, Impressions, InnerState, MemoryEntry, NextSpeaker, OpenAIEmbedder,
     Plan, ReflectiveMemory, ScoredMemory, Simulation, make_llm, tool,
 )
@@ -119,14 +119,14 @@ CHECKS = [("chat", check_chat), ("native tool calls", check_tools), ("react tool
           ("conversation", check_conversation), ("components", check_components), ("reflection", check_reflection),
           ("next speaker", check_next_speaker), ("cache", check_cache)]
 
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("model")
+def add_arguments(ap: argparse.ArgumentParser) -> None:
+    ap.add_argument("model", help="model spec, e.g. vllm:Qwen/Qwen3.5-9B@http://node:8000/v1")
     ap.add_argument("--no-thinking", action="store_true", help="disable thinking on Qwen3-style models")
     ap.add_argument("--skip", nargs="*", default=[])
     ap.add_argument("--embed", help="embedding endpoint spec, e.g. BAAI/bge-small-en-v1.5@http://node:8002/v1")
-    args = ap.parse_args()
 
+
+def main(args: argparse.Namespace) -> int:
     kw = {"temperature": 0, "max_tokens": 512, "retries": 2}
     if args.no_thinking:
         kw["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
@@ -158,4 +158,10 @@ if __name__ == "__main__":
             failed += 1
             print(f"FAIL  {'embedding retrieval':20s} {type(e).__name__}: {str(e)[:300]}")
     print(f"\nusage: {llm.usage}")
-    sys.exit(1 if failed else 0)
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description=__doc__)
+    add_arguments(ap)
+    sys.exit(main(ap.parse_args()))

@@ -1,0 +1,62 @@
+# Negotiation: does a tough seller persona change trust, price and cooperation?
+# Run:  simsim run experiment.yaml --dry-run      (fake model, free)
+#       simsim run experiment.yaml --workers 8 --view
+name: negotiation
+out: runs/negotiation
+seeds: 3
+
+models:
+  main:
+    spec: openai:gpt-4o-mini           # or vllm:Qwen/Qwen3.5-9B@http://NODE:8000/v1
+    temperature: 0.7
+    max_tokens: 512
+    # cache: cache/main.sqlite         # replay identical runs for free
+    # extra_body: {chat_template_kwargs: {enable_thinking: false}}   # Qwen3-style models
+  judge:
+    spec: openai:gpt-4o
+    temperature: 0
+
+grid:                                  # every combination is a condition; use as ${factor}
+  style:
+    neutral: ""
+    tough: "You are a hard bargainer who rarely gives ground."
+
+agents:
+  - name: Buyer
+    model: main
+    persona: "You want to buy a used bike."
+    memory: FullHistory
+    output_schema:                     # private reasoning + public reply
+      thoughts: {type: str, description: "private; the seller never sees this"}
+      reply: str
+  - name: Seller
+    model: main
+    persona: "You are selling your used bike. ${style}"
+    memory: FullHistory
+
+environment:
+  type: Conversation
+  scenario: "A buyer and a seller negotiate the price of a used bike listed at $200."
+  private:
+    Buyer: "You will not pay more than $170."
+    Seller: "You will not sell below $110."
+  max_turns: 12
+
+simulation:
+  max_steps: 12
+  scheduler: round_robin
+
+probes:
+  - type: survey
+    question: "I trust the other person in this negotiation."
+    options: likert7
+    at: [0, end]
+  - type: probe
+    question: "What final price, if any, did you agree on?"
+    schema: {agreed: bool, price: [int, 0, 1000]}
+    at: end
+
+judge:
+  model: judge
+  rubric: "Rate how cooperative the negotiation was (1 = hostile, 10 = very cooperative).\n\n{text}"
+  schema: {reasoning: str, cooperation: [int, 1, 10]}

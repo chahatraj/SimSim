@@ -379,5 +379,7 @@ def make_llm(spec: str, **kwargs) -> LLM:
         raise ValueError(f"Unknown provider {provider!r}; choose from {sorted(_PROVIDERS) + ['litellm']}")
     model, _, url = rest.partition("@")
     default_url, key_env = _PROVIDERS[provider]
-    api_key = os.environ.get(key_env) if key_env else "EMPTY"
+    api_key = kwargs.pop("api_key", None) or (os.environ.get(key_env) if key_env else "EMPTY")
+    if key_env and not api_key and not url:
+        raise ValueError(f"{provider} needs an API key: set {key_env} (or pass api_key=...)")
     return OpenAIChat(model, base_url=url or default_url, api_key=api_key, **kwargs)

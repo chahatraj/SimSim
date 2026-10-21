@@ -15,10 +15,37 @@ every piece replaceable.
 ## Install
 
 ```bash
-pip install -e .            # needs Python 3.10+; core dependency is just `openai`
-pip install -e ".[dev]"     # + pytest
-pytest                      # runs on a fake model, costs nothing
+pip install git+https://github.com/chahatraj/SimSim                 # latest
+pip install "simsim[analysis] @ git+https://github.com/chahatraj/SimSim@v0.5.0"   # pinned, + pandas
 ```
+
+Python 3.10+. Core dependencies are `openai` and `pyyaml`; extras: `analysis` (pandas),
+`checkpoint` (cloudpickle), `litellm`. For development: `pip install -e ".[dev,analysis]" && pytest`
+(the tests use a fake model and cost nothing).
+
+## Start a study in one minute
+
+```bash
+simsim new my_study && cd my_study
+simsim run experiment.yaml --dry-run          # fake model: checks the whole setup for free
+# edit models: in experiment.yaml, then
+simsim run experiment.yaml --workers 8 --view # runs every condition x seed; writes runs/my_study/view.html
+simsim summarize runs/my_study --by style --metric judge.cooperation
+```
+
+An experiment can be a YAML config (models, a grid of conditions, agents or a sampled
+population, environment, probes, judge) or a Python file with `build(cond, seed)`; both
+are run the same way. Ready-made configs are in `examples/configs/`: a negotiation, a
+support agent tested by a simulated user with tools, and a 30-person social feed.
+
+| Command | What it does |
+|---|---|
+| `simsim new NAME` | scaffold a study folder (config, Python version, analysis script) |
+| `simsim run FILE [--dry-run] [--workers N] [--seeds N] [--view]` | run a `.yaml`/`.json` config or a `.py` experiment |
+| `simsim view RUNS [--prompts]` | write an offline HTML viewer of all runs |
+| `simsim summarize RUNS --by FACTOR... [--metric M...]` | mean, sem, n, 95% CI per condition |
+| `simsim transcript LOG [--private]` | print one run as a readable transcript |
+| `simsim smoke MODEL [--no-thinking] [--embed EMB]` | check an endpoint supports every SimSim feature |
 
 ## Thirty-second tour
 
@@ -243,10 +270,10 @@ in the logs.
 mkdir -p logs && VLLM=/path/to/vllm CACHE=/path/to/cache TOOL_PARSER=qwen3_coder \
     EXTRA_ARGS="--reasoning-parser qwen3" sbatch scripts/serve_vllm.slurm Qwen/Qwen3.5-9B
 grep Serving logs/vllm-*.out                     # -> http://gpu0XX:8000/v1
-python scripts/smoke_test.py vllm:Qwen/Qwen3.5-9B@http://gpu0XX:8000/v1 --no-thinking
+simsim smoke vllm:Qwen/Qwen3.5-9B@http://gpu0XX:8000/v1 --no-thinking
 ```
 
-`smoke_test.py` checks chat, native tool calls, ReAct, structured output, surveys and
+`simsim smoke` checks chat, native tool calls, ReAct, structured output, surveys and
 a short conversation against any endpoint. Tool calling needs the right
 `TOOL_PARSER` for the model family; the script's header lists them. Adjust the
 `#SBATCH` lines to your cluster. MIG GPU slices work (the script fixes the device id).
@@ -272,7 +299,7 @@ Drop `--dry-run` and add `--model ...` to run them on a real model.
 
 ## Status
 
-Early (v0.3). Interfaces may change.
+Early (v0.5). Interfaces may change.
 
 ## License
 
