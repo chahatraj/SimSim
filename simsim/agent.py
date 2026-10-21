@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from .components import Component
 from .llm import LLM, LLMResponse, Message, ScriptedLLM, ToolCall
 from .memory import Memory, MemoryEntry, NoMemory
 from .record import Recorder
@@ -83,6 +84,8 @@ class Turn:
     reasoning: str = ""
     usage: dict[str, int] = field(default_factory=dict)
     error: str | None = None
+    components: dict[str, Any] = field(default_factory=dict)  # each component's state after the turn
+    time: str | None = None  # simulated clock time, if the simulation has a clock
     messages: list[Message] = field(default_factory=list)
 
 
@@ -113,6 +116,7 @@ class Agent:
         remember_observations: True stores the full observation in memory; an int keeps
             only its first N characters; False stores only what the agent did.
         memory_max_chars: cap on memory text in the prompt (keeps the most recent part).
+        components: plans, impressions, goals, inner states... (see `simsim.components`).
         max_tool_steps: cap on tool-call rounds per turn.
     """
 
@@ -131,6 +135,7 @@ class Agent:
         remember_private: bool = True,
         remember_observations: bool | int = True,
         memory_max_chars: int | None = None,
+        components: Iterable[Component] = (),
         max_tool_steps: int = 8,
         max_repairs: int = 2,
     ):
@@ -151,27 +156,37 @@ class Agent:
         self.remember_private = remember_private
         self.remember_observations = remember_observations
         self.memory_max_chars = memory_max_chars
+        self.components = list(components)
         self.max_tool_steps = max_tool_steps
         self.max_repairs = max_repairs
+        self.peers: list[str] = []  # other agents' names; set by the simulation
+        self.time: str | None = None  # current clock time; set by the simulation
 
     # ---- prompts ---------------------------------------------------------------
 
-    def memory_text(self, query: str = "") -> str:
-        text = self.memory.read(query)
+    def memory_text(self, query: str = "", probing: bool = False) -> str:
+        text = self.memory.peek(query) if probing else self.memory.read(query)
         if self.memory_max_chars and len(text) > self.memory_max_chars:
             text = "...\n" + text[-self.memory_max_chars :]
         return text
 
-    def system_prompt(self, query: str = "") -> str:
+    def system_prompt(self, query: str = "", t: int = 0, probing: bool = False) -> str:
         text = self.template.format(
             name=self.name,
             persona=self.persona.render(),
             instructions=self.instructions,
-            memory=self.memory_text(query) or "(nothing yet)",
+            memory=self.memory_text(query, probing) or "(nothing yet)",
         )
         if isinstance(self.memory, NoMemory) and self.template == DEFAULT_TEMPLATE:
             text = text.split("\n# Your memory")[0]
-        return text.strip()
+        sections = [text.strip()]
+        if self.time:
+            sections.append(f"# Current time\n{self.time}")
+        for c in self.components:
+            ctx = c.view(self, query, t) if probing else c.context(self, query, t)
+            if ctx:
+                sections.append(f"# {c.heading}\n{ctx}")
+        return "\n\n".join(sections)
 
     def _react_prompt(self, tools: dict[str, Tool]) -> str:
         lines = [f"- {t.name}: {t.description} Arguments: {json.dumps(t.parameters['properties'])}" for t in tools.values()]
@@ -188,7 +203,7 @@ class Agent:
     ) -> Turn:
         """Respond to `observation`, calling tools as needed, then store the turn in memory."""
         all_tools = {tl.name: tl for tl in [*self.tools, *self.memory.tools(), *tools]}
-        system = self.system_prompt(observation)
+        system = self.system_prompt(observation, t)
         if self.action_format == "react" and all_tools:
             system += "\n\n" + self._react_prompt(all_tools)
         user = observation
@@ -196,16 +211,18 @@ class Agent:
             where = "in your Final Answer" if self.action_format == "react" and all_tools else ""
             user += f"\n\n{format_instructions(self.output_schema)} {where}".rstrip()
         messages: list[Message] = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-        turn = Turn(self.name, t, observation, "")
+        turn = Turn(self.name, t, observation, "", time=self.time)
         run = self._run_react if self.action_format == "react" else self._run_tools
         final = run(messages, all_tools, turn, recorder)
         self._finish(final, messages, turn, recorder)
         turn.messages = messages
         self._remember(turn)
+        self._update_components(turn, recorder)
         if recorder:
             recorder.log(
-                "turn", agent=self.name, t=t, observation=observation, text=turn.text, private=turn.private,
-                reasoning=turn.reasoning, tool_calls=turn.tool_calls, usage=turn.usage, error=turn.error,
+                "turn", agent=self.name, t=t, time=turn.time, observation=observation, text=turn.text,
+                private=turn.private, reasoning=turn.reasoning, tool_calls=turn.tool_calls, usage=turn.usage,
+                error=turn.error, components=turn.components,
             )
         return turn
 
@@ -304,7 +321,41 @@ class Agent:
         if turn.private and self.remember_private:
             parts.append(f"My private notes: {json.dumps(turn.private)}")
         parts.append(f"I said: {turn.text}")
-        self.memory.write(MemoryEntry(turn.t, "\n".join(parts), kind="turn"))
+        meta = {"time": turn.time} if turn.time else {}
+        self.memory.write(MemoryEntry(turn.t, "\n".join(parts), kind="turn", meta=meta))
+
+    def _update_components(self, turn: Turn, recorder) -> None:
+        for c in self.components:
+            c.update(self, turn, recorder)
+            state = c.dump()
+            if state is not None:
+                turn.components[type(c).__name__] = state
+
+    # ---- saving and restoring --------------------------------------------------
+
+    def state_dict(self) -> dict[str, Any]:
+        """Everything the agent has learned (memory and components), JSON-serializable."""
+        return {
+            "name": self.name,
+            "persona": self.persona.to_dict(),
+            "memory": self.memory.dump(),
+            "components": [c.dump() for c in self.components],
+        }
+
+    def load_state_dict(self, state: dict[str, Any]) -> None:
+        self.memory.load(state["memory"])
+        for c, data in zip(self.components, state.get("components", [])):
+            if data is not None:
+                c.load(data)
+
+    def save(self, path: str | Path) -> None:
+        """Save memory and component state, e.g. to continue this agent in a later experiment."""
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_text(json.dumps(self.state_dict(), indent=2, default=str))
+
+    def restore(self, path: str | Path) -> "Agent":
+        self.load_state_dict(json.loads(Path(path).read_text()))
+        return self
 
     # ---- probes: questions that do not change the agent ------------------------
 
@@ -322,7 +373,7 @@ class Agent:
         not change what happens next. With `schema`, returns a validated dict (or None).
         """
         messages: list[Message] = [
-            {"role": "system", "content": self.system_prompt(question)},
+            {"role": "system", "content": self.system_prompt(question, t, probing=True)},
             {"role": "user", "content": question},
         ]
         if schema:
@@ -351,7 +402,7 @@ class Agent:
         labeled = options if isinstance(options, dict) else {chr(65 + i): o for i, o in enumerate(options)}
         listing = "\n".join(f"{k}. {v}" for k, v in labeled.items())
         prompt = f"{question}\n\n{listing}\n\nAnswer with the label only ({', '.join(labeled)})."
-        messages = [{"role": "system", "content": self.system_prompt(question)}, {"role": "user", "content": prompt}]
+        messages = [{"role": "system", "content": self.system_prompt(question, t, probing=True)}, {"role": "user", "content": prompt}]
         probs = self.llm.choice_probs(messages, list(labeled))
         if recorder:
             recorder.log("survey", agent=self.name, t=t, question=question, options=labeled, probs=probs)
@@ -364,6 +415,7 @@ class Agent:
             "persona": self.persona.to_dict(),
             "instructions": self.instructions,
             "memory": self.memory.state(),
+            "components": [type(c).__name__ for c in self.components],
             "tools": [tl.name for tl in self.tools],
             "action_format": self.action_format,
             "output_schema": list(self.output_schema) if self.output_schema else None,

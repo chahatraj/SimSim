@@ -70,6 +70,8 @@ class LLM:
         temperature, max_tokens, seed: sampling settings sent with every call.
         retries: attempts after the first on transient errors.
         price: (dollars per 1M input tokens, dollars per 1M output tokens), to track cost.
+        max_concurrency: at most this many calls in flight at once (across threads).
+        rpm: at most this many calls per minute (for API rate limits).
     """
 
     model: str = "unknown"
@@ -81,19 +83,55 @@ class LLM:
         seed: int | None = None,
         retries: int = 6,
         price: tuple[float, float] | None = None,
+        max_concurrency: int | None = None,
+        rpm: float | None = None,
     ):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.seed = seed
         self.retries = retries
         self.price = price
+        self.max_concurrency = max_concurrency
+        self.rpm = rpm
         self._usage = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "retries": 0}
+        self._init_sync()
+
+    def _init_sync(self):
         self._lock = threading.Lock()
+        self._slots = threading.BoundedSemaphore(self.max_concurrency) if self.max_concurrency else None
+        self._next_slot = 0.0
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        for k in ("_lock", "_slots", "client", "_litellm"):
+            state.pop(k, None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._init_sync()
+        if hasattr(self, "_connect"):
+            self._connect()
+
+    def _wait_rate(self):
+        if not self.rpm:
+            return
+        with self._lock:
+            now = time.monotonic()
+            start = max(now, self._next_slot)
+            self._next_slot = start + 60.0 / self.rpm
+        if start > now:
+            time.sleep(start - now)
 
     def chat(self, messages: list[Message], tools: list[dict] | None = None, **kwargs) -> LLMResponse:
         for attempt in range(self.retries + 1):
             try:
-                resp = self._chat(messages, tools or None, **kwargs)
+                self._wait_rate()
+                if self._slots:
+                    with self._slots:
+                        resp = self._chat(messages, tools or None, **kwargs)
+                else:
+                    resp = self._chat(messages, tools or None, **kwargs)
                 break
             except Exception as e:
                 if attempt == self.retries or not self._retryable(e):
@@ -169,15 +207,19 @@ class OpenAIChat(LLM):
         extra_body: dict | None = None, timeout: float = 300, **kwargs,
     ):
         super().__init__(**kwargs)
-        from openai import OpenAI
-
         self.model = model
         self.base_url = base_url
         self.extra_body = extra_body or {}
+        self._api_key, self._timeout = api_key, timeout
+        self._connect()
+
+    def _connect(self):
+        from openai import OpenAI
+
         # Retries happen in LLM.chat, so the client itself does not retry.
         self.client = OpenAI(
-            base_url=base_url, api_key=api_key or os.environ.get("OPENAI_API_KEY", "EMPTY"),
-            max_retries=0, timeout=timeout,
+            base_url=self.base_url, api_key=self._api_key or os.environ.get("OPENAI_API_KEY", "EMPTY"),
+            max_retries=0, timeout=self._timeout,
         )
 
     def _params(self, messages, **kwargs) -> dict[str, Any]:
@@ -251,9 +293,12 @@ class LiteLLMChat(LLM):
 
     def __init__(self, model: str, **kwargs):
         super().__init__(**kwargs)
+        self.model = model
+        self._connect()
+
+    def _connect(self):
         import litellm
 
-        self.model = model
         self._litellm = litellm
 
     def _chat(self, messages, tools, **kwargs) -> LLMResponse:

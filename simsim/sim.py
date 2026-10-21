@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import pickle
 import random
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
@@ -11,7 +13,8 @@ from .agent import Agent, Turn
 from .envs.base import Environment
 from .memory import MemoryEntry
 from .record import Recorder
-from .schedule import Scheduler, round_robin
+from .clock import Clock
+from .schedule import Scheduler, call_scheduler, round_robin
 from .structured import Schema
 
 END = -1  # pass as a step to `at` to run after the last step
@@ -100,13 +103,17 @@ class Simulation:
         max_steps: hard cap on steps.
         seed: seeds the scheduler/environment RNG.
         simultaneous: if True, all agents scheduled in a step observe the same
-            world state and act in parallel threads; their actions are applied
-            afterwards in schedule order. If False, each sees the previous
-            agent's action.
+            world state and act in parallel; their actions are applied afterwards
+            in schedule order. If False, each sees the previous agent's action.
+        max_concurrency: with `simultaneous`, at most this many agents act at once.
+        clock: a `Clock`; agents then see the current time and memories are timestamped.
         interventions: things that happen at chosen steps (`at`, `every` with
             `whisper`, `add_agent`, `probe`, `survey`, or any `fn(sim, t)`).
         evaluators: {name: fn(result) -> dict}, run at the end and added to
             metrics under `name` (e.g. an LLM judge scoring the transcript).
+        checkpoint: path to save the whole simulation every `checkpoint_every`
+            steps; continue a crashed or stopped run with `Simulation.resume(path)`.
+            Needs `pip install cloudpickle` if the setup uses lambdas or closures.
     """
 
     def __init__(
@@ -117,8 +124,12 @@ class Simulation:
         max_steps: int = 20,
         seed: int = 0,
         simultaneous: bool = False,
+        max_concurrency: int = 16,
+        clock: Clock | None = None,
         interventions: list[Intervention] = (),
         evaluators: dict[str, Callable[[Result], dict[str, Any]]] | None = None,
+        checkpoint: str | Path | None = None,
+        checkpoint_every: int = 10,
     ):
         names = [a.name for a in agents]
         if len(set(names)) != len(names):
@@ -129,8 +140,12 @@ class Simulation:
         self.max_steps = max_steps
         self.seed = seed
         self.simultaneous = simultaneous
+        self.max_concurrency = max_concurrency
+        self.clock = clock
         self.interventions = list(interventions)
         self.evaluators = evaluators or {}
+        self.checkpoint = Path(checkpoint) if checkpoint else None
+        self.checkpoint_every = checkpoint_every
 
     def agent(self, name: str) -> Agent:
         for a in self.agents:
@@ -147,16 +162,25 @@ class Simulation:
                 self.recorder.log("intervention", t=t, fn=getattr(iv.fn, "__qualname__", repr(iv.fn)))
                 iv.fn(self, t)
 
-    def _step(self, t: int, turns: list[Turn]) -> None:
-        active = self.scheduler(self.agents, t, self.rng)
+    def _prepare_agents(self, t: int) -> None:
+        names = [a.name for a in self.agents]
+        now = self.clock(t) if self.clock else None
+        for a in self.agents:
+            a.peers = [n for n in names if n != a.name]
+            a.time = now
+
+    def _step(self, t: int) -> None:
+        self._prepare_agents(t)
+        active = call_scheduler(self.scheduler, self.agents, t, self.rng, self)
         if self.simultaneous:
             pending = [(a, self.env.observe(a, t), self.env.tools_for(a, t)) for a in active]
             pending = [p for p in pending if p[1] is not None]
-            with ThreadPoolExecutor(max_workers=max(1, len(pending))) as pool:
+            workers = max(1, min(len(pending), self.max_concurrency))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
                 done = list(pool.map(lambda p: p[0].act(p[1], t, p[2], self.recorder), pending))
             for turn in done:
                 self.env.apply(turn, t)
-                turns.append(turn)
+                self.turns.append(turn)
             return
         for a in active:
             obs = self.env.observe(a, t)
@@ -164,7 +188,7 @@ class Simulation:
                 continue
             turn = a.act(obs, t, self.env.tools_for(a, t), self.recorder)
             self.env.apply(turn, t)
-            turns.append(turn)
+            self.turns.append(turn)
             if self.env.done(t):
                 return
 
@@ -172,22 +196,28 @@ class Simulation:
         self.recorder = recorder or Recorder()
         self.rng = random.Random(self.seed)
         self.probes: list[dict[str, Any]] = []
+        self.turns: list[Turn] = []
         self.env.reset(self.agents, self.rng)
+        self._prepare_agents(0)
         self.recorder.log("start", seed=self.seed, max_steps=self.max_steps, agents=[a.describe() for a in self.agents])
-        turns: list[Turn] = []
+        return self._loop(0)
+
+    def _loop(self, start: int) -> Result:
         steps, termination = self.max_steps, "max_steps"
-        for t in range(self.max_steps):
+        for t in range(start, self.max_steps):
             self._intervene(t)
             if self.env.done(t):
                 steps, termination = t, self.env.stop_reason or "done"
                 break
-            self._step(t, turns)
+            self._step(t)
             if self.env.done(t):
                 steps, termination = t + 1, self.env.stop_reason or "done"
                 break
+            if self.checkpoint and (t + 1) % self.checkpoint_every == 0:
+                self.save(self.checkpoint, next_step=t + 1)
         self._intervene(steps, end=True)
 
-        result = Result(turns, self.env.metrics(), self._usage(turns), steps, termination, self.probes)
+        result = Result(self.turns, self.env.metrics(), self._usage(self.turns), steps, termination, self.probes)
         for name, fn in self.evaluators.items():
             result.metrics[name] = fn(result)
             self.recorder.log("evaluation", name=name, result=result.metrics[name])
@@ -195,7 +225,38 @@ class Simulation:
             "end", steps=steps, termination=termination, metrics=result.metrics, usage=result.usage,
             probes=self.probes, memory={a.name: a.memory.state() for a in self.agents},
         )
+        if self.checkpoint and self.checkpoint.exists():
+            self.checkpoint.unlink()  # finished: the checkpoint is no longer needed
         return result
+
+    # ---- checkpoints -----------------------------------------------------------
+
+    def save(self, path: str | Path, next_step: int) -> None:
+        """Save the whole simulation (agents, memories, environment, RNG, progress)."""
+        try:
+            import cloudpickle as pickler
+        except ImportError:
+            pickler = pickle
+        recorder, self.recorder = self.recorder, None
+        self._next_step = next_step
+        try:
+            path = Path(path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(path.suffix + ".tmp")
+            tmp.write_bytes(pickler.dumps(self))
+            tmp.replace(path)
+        except (pickle.PicklingError, AttributeError, TypeError) as e:
+            raise RuntimeError(f"Could not checkpoint ({e}); `pip install cloudpickle` handles lambdas") from e
+        finally:
+            self.recorder = recorder
+
+    @staticmethod
+    def resume(path: str | Path, recorder: Recorder | None = None) -> Result:
+        """Continue a checkpointed simulation from where it stopped."""
+        sim: Simulation = pickle.loads(Path(path).read_bytes())
+        sim.recorder = recorder or Recorder()
+        sim.recorder.log("resume", step=sim._next_step)
+        return sim._loop(sim._next_step)
 
     def _usage(self, turns: list[Turn]) -> dict[str, Any]:
         per_agent: dict[str, dict[str, int]] = {}
@@ -204,6 +265,6 @@ class Simulation:
             for k, v in turn.usage.items():
                 u[k] = u.get(k, 0) + v
         # Totals per distinct backend object, so agents sharing one LLM are not double counted.
-        # These include memory, probe and judge calls made through the same backends.
+        # These include memory, component, probe and judge calls made through the same backends.
         backends = {id(a.llm): a.llm for a in self.agents}
         return {"agents": per_agent, "backends": {f"{b.model}#{i}": b.usage for i, b in enumerate(backends.values())}}

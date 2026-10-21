@@ -41,11 +41,13 @@ print(result.transcript(), result.termination)
 |---|---|---|
 | **LLM** | Any model, with retries/backoff and token and cost counts. `make_llm("provider:model")` | `openai`, `anthropic`, `together`, `vllm`, `ollama`, `litellm:*`, and `ScriptedLLM` (a fake model for tests) |
 | **Agent** | Model + persona + memory + tools. `act(observation)` runs the tool loop | native tool calls or ReAct text; `output_schema` for structured replies; `ScriptedAgent`, `HumanAgent` |
-| **Memory** | `write(entry)` after each turn, `read(query)` into the prompt, optional `tools()` | `NoMemory`, `FullHistory`, `WindowMemory`, `SummaryMemory`, `MarkdownMemory` (the agent edits its own notes file), `ScoredMemory` (Generative Agents-style recency + importance + relevance) |
+| **Memory** | `write(entry)` after each turn, `read(query)` into the prompt, optional `tools()` | `NoMemory`, `FullHistory`, `WindowMemory`, `SummaryMemory`, `MarkdownMemory` (the agent edits its own notes file), `ScoredMemory` (Generative Agents-style recency + importance + relevance, with embeddings), `ReflectiveMemory` (+ reflection) |
+| **Components** | Pluggable parts of an agent's mind: a prompt section each turn, updated after each turn, logged | `Goal`, `Plan`, `Impressions` (of other agents), `InnerState` (emotions, beliefs, trust: any schema) |
 | **Tool** | A Python function with `@tool`; the signature and docstring become the schema | — |
 | **Environment** | What each agent observes, which tools it gets, how actions change the world, when to stop | `Conversation` (also hosts user simulators), `TaskSequence`, `Feed` (a mini social network) |
-| **Scheduler** | Who acts at each step | `round_robin`, `everyone`, `everyone_shuffled`, `random_one`, `zipf` |
-| **Simulation** | Runs the loop, interventions and evaluators; records why it stopped | `at`, `every`, `whisper`, `add_agent`, `probe`, `survey` |
+| **Scheduler** | Who acts at each step | `round_robin`, `everyone`, `everyone_shuffled`, `random_one`, `bernoulli`, `zipf`, `by_hour` (needs a `Clock`), `NextSpeaker` (an LLM moderator picks) |
+| **Simulation** | Runs the loop, interventions and evaluators; records why it stopped; parallel agents; checkpoints | `at`, `every`, `whisper`, `add_agent`, `probe`, `survey`, `Clock` |
+| **Infrastructure** | Things every long experiment needs | `CachedLLM` (replay runs for free), `max_concurrency=` / `rpm=` on any LLM, `emulated_tool` (an LLM fakes a tool), `Agent.save`/`restore` |
 | **Judge** | An LLM scores transcripts against a rubric, decides when to stop, re-scores saved runs | `Judge`, `rescore` |
 | **Personas** | Sample attributes from distributions or survey rows; optional LLM-written bios | `sample_personas`, `personas_from_rows` |
 | **Experiment** | Conditions × seeds, parallel workers, JSONL logs, resumes if interrupted | `grid(...)` crosses factors into conditions |
@@ -75,6 +77,36 @@ vLLM reasoning parser) is captured separately in `turn.reasoning`.
 
 For models or servers without native tool calling, use `action_format="react"`
 (Thought / Action / Action Input / Final Answer, parsed with repair).
+
+## Components and richer memory
+
+```python
+from simsim import Goal, Plan, Impressions, InnerState, ReflectiveMemory, OpenAIEmbedder
+
+agent = Agent("Ana", llm, persona=...,
+              memory=ReflectiveMemory(llm, embedder=OpenAIEmbedder("text-embedding-3-small"),
+                                      weights=(0.5, 3, 2)),          # Park et al.'s weights
+              components=[Goal("Get elected class president."), Plan(every=5), Impressions(),
+                          InnerState({"mood": ["calm", "anxious", "angry"], "trust_in_Bo": (int, 1, 7)})])
+```
+
+Each turn's component states are in `turn.components` and the logs, so you can
+plot trust or mood over time. Probes see components and memory read-only.
+
+## Time, scale, caching, checkpoints
+
+```python
+Simulation(env, agents, clock=Clock("2024-03-04 08:00", "30min"),   # agents see the time
+           scheduler=by_hour({h: 0.1 if h < 8 else 0.6 for h in range(24)}),
+           simultaneous=True, max_concurrency=32,                   # many agents in parallel
+           checkpoint="runs/town.ckpt")                             # resume with Simulation.resume(path)
+
+llm = CachedLLM(make_llm("openai:gpt-4o-mini", seed=0, rpm=500), "cache/gpt4o-mini.sqlite")
+```
+
+With `CachedLLM`, rerunning the same code replays every response from disk (the n-th
+identical request gets the n-th stored answer), so you can change analysis code or
+add an evaluator and rerun at no cost.
 
 ## Probes: interviews and surveys
 
@@ -224,7 +256,7 @@ Drop `--dry-run` and add `--model ...` to run them on a real model.
 
 ## Status
 
-Early (v0.2). Interfaces may change.
+Early (v0.3). Interfaces may change.
 
 ## License
 
