@@ -286,7 +286,6 @@ a short conversation against any endpoint. Tool calling needs the right
 python examples/negotiation.py --dry-run        # persona effect on price, 2 agents
 python examples/memory_tasks.py --dry-run       # 5 memory types, planted preference
 python examples/social_feed.py --dry-run        # 6 personas, feed ranking condition
-python examples/identity_conflict.py --dry-run  # rival national identities co-writing history
 ```
 
 Drop `--dry-run` and add `--model ...` to run them on a real model.
